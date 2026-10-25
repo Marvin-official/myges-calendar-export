@@ -1,0 +1,54 @@
+name: Update MyGES calendar
+
+on:
+  schedule:
+    - cron: "0 */3 * * *" # every 3 hours (UTC)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check secrets
+        env:
+          MYGES_USERNAME: ${{ secrets.MYGES_USERNAME }}
+          MYGES_PASSWORD: ${{ secrets.MYGES_PASSWORD }}
+          CALENDAR_TOKEN: ${{ secrets.CALENDAR_TOKEN }}
+        run: |
+          for name in MYGES_USERNAME MYGES_PASSWORD CALENDAR_TOKEN; do
+            if [ -z "${!name}" ]; then echo "::error::Missing secret $name"; exit 1; fi
+          done
+
+      # The file name is the secret token, so the URL can't be guessed.
+      # If this step fails, nothing is deployed and the last calendar stays online.
+      - name: Build calendar
+        env:
+          MYGES_USERNAME: ${{ secrets.MYGES_USERNAME }}
+          MYGES_PASSWORD: ${{ secrets.MYGES_PASSWORD }}
+          CALENDAR_TOKEN: ${{ secrets.CALENDAR_TOKEN }}
+        run: python myges_ics.py --out "public/${CALENDAR_TOKEN}.ics"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
